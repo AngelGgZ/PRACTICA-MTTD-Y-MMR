@@ -4,6 +4,8 @@ import sqlite3
 import re 
 from werkzeug.security import generate_password_hash, check_password_hash
 
+from datetime import datetime 
+
 app = Flask(__name__)
 
 def validar_usuario(usuario):
@@ -16,8 +18,16 @@ def validar_correo(correo):
         correo
     ) is not None
 
+
 def validar_password(password):
     return len(password) >= 8
+
+
+def registrar_evento(tipo, usuario):
+    fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with open("eventos.log", "a", encoding="utf-8") as archivo:
+        archivo.write(f"{fecha},{tipo},{usuario}\n")
 
 @app.route("/")
 def inicio():
@@ -45,8 +55,22 @@ def registro():
         cursor = conexion.cursor()
 
         cursor.execute(
+            "SELECT id FROM usuarios WHERE usuario = ? OR correo = ?",
+            (usuario, correo)
+        )
+
+        existente = cursor.fetchone()
+
+        if existente:
+            conexion.close()
+            return "El usuario o correo ya esta registrado"
+
+
+        password_hash = generate_password_hash(password)
+
+        cursor.execute(
             "INSERT INTO usuarios (usuario, correo, password) VALUES (?, ?, ?)",
-            (usuario, correo, password)
+            (usuario, correo, password_hash)
         )
 
         conexion.commit()
@@ -61,24 +85,26 @@ def login():
 
     if request.method == "POST":
 
-        usuario = request.form["usuario"]
-        password = request.form["password"]
+        usuario = request.form.get("usuario", "").strip()
+        password = request.form.get("password", "")
 
         conexion = sqlite3.connect("usuarios.db")
         cursor = conexion.cursor()
 
         cursor.execute(
-            "SELECT * FROM usuarios WHERE usuario = ? AND password = ?",
-            (usuario, password)
+            "SELECT * FROM usuarios WHERE usuario = ?",
+            (usuario,)
         )
 
         resultado = cursor.fetchone()
 
         conexion.close()
 
-        if resultado:
+        if resultado and check_password_hash(resultado[3], password):
+            registrar_evento("LOGIN_CORRECTO", usuario)
             return "Inicio de sesión correcto"
         else:
+            registrar_evento("LOGIN_FALLIDO", usuario)
             return "Credenciales incorrectas"
 
     return render_template("login.html")
