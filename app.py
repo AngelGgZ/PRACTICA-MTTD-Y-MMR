@@ -1,7 +1,23 @@
 from flask import Flask, render_template, request
 import sqlite3
 
+import re 
+from werkzeug.security import generate_password_hash, check_password_hash
+
 app = Flask(__name__)
+
+def validar_usuario(usuario):
+    return re.fullmatch(r"[A-Za-z0-9_]{4,20}", usuario) is not None
+
+
+def validar_correo(correo):
+    return re.fullmatch(
+        r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$",
+        correo
+    ) is not None
+
+def validar_password(password):
+    return len(password) >= 8
 
 @app.route("/")
 def inicio():
@@ -9,10 +25,62 @@ def inicio():
 
 @app.route("/registro", methods=["GET", "POST"])
 def registro():
+
+    if request.method == "POST":
+
+        usuario = request.form.get("usuario", "").strip()
+        correo = request.form.get("correo", "").strip()
+        password = request.form.get("password", "")
+
+        if not validar_usuario(usuario):
+            return "Usuario invalido"
+
+        if not validar_correo(correo):
+         return "Correo electrónico inválido"
+
+        if not validar_password(password):
+            return "La contraseña debe contener al menos 8 caracteres"
+
+        conexion = sqlite3.connect("usuarios.db")
+        cursor = conexion.cursor()
+
+        cursor.execute(
+            "INSERT INTO usuarios (usuario, correo, password) VALUES (?, ?, ?)",
+            (usuario, correo, password)
+        )
+
+        conexion.commit()
+        conexion.close()
+
+        return "Usuario registrado"
+
     return render_template("registro.html")
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+
+    if request.method == "POST":
+
+        usuario = request.form["usuario"]
+        password = request.form["password"]
+
+        conexion = sqlite3.connect("usuarios.db")
+        cursor = conexion.cursor()
+
+        cursor.execute(
+            "SELECT * FROM usuarios WHERE usuario = ? AND password = ?",
+            (usuario, password)
+        )
+
+        resultado = cursor.fetchone()
+
+        conexion.close()
+
+        if resultado:
+            return "Inicio de sesión correcto"
+        else:
+            return "Credenciales incorrectas"
+
     return render_template("login.html")
 
 if __name__ == "__main__":
